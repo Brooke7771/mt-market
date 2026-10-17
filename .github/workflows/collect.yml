@@ -1,0 +1,36 @@
+name: collect
+on:
+  schedule:
+    - cron: "35 2 * * *"      # API Majestic обновляет цифры около 02:10 UTC
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency: collect
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Прошлые данные
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: mkdir -p prev && (gh release download data -D prev -R "$GITHUB_REPOSITORY" || true)
+      - name: Сбор
+        env:
+          MAJESTIC_API_KEY: ${{ secrets.MAJESTIC_API_KEY }}
+        run: python collect.py
+      - name: Выложить
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload data out/* --clobber -R "$GITHUB_REPOSITORY"
+      - name: Отметка (чтобы GitHub не выключил расписание)
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add status.json
+          git commit -m "данные $(date -u +%F)" || true
+          git push || true
